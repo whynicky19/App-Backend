@@ -5,6 +5,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 from db import Base
 
+post_enrollments = Table(
+    "post_enrollments",
+    Base.metadata,
+    Column("post_id", Integer, ForeignKey("posts.id", ondelete="CASCADE")),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE")),
+)
+
 class_members = Table(
     "class_members",
     Base.metadata,

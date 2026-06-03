@@ -7,6 +7,7 @@ import schemas
 from db import get_db
 from crud import posts as crud_posts
 from deps import get_current_user
+from models import post_enrollments
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -44,6 +45,30 @@ def delete_post(
 
     crud_posts.delete_post(db=db, post_id=post_id)
     return None
+
+@router.post("/{post_id}/join", status_code=200)
+def join_post_class(post_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    exists = db.execute(
+        post_enrollments.select().where(
+            post_enrollments.c.post_id == post_id,
+            post_enrollments.c.user_id == current_user.id,
+        )
+    ).first()
+    if not exists:
+        db.execute(post_enrollments.insert().values(post_id=post_id, user_id=current_user.id))
+        db.commit()
+    return {"ok": True}
+
+@router.delete("/{post_id}/leave", status_code=200)
+def leave_post_class(post_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    db.execute(
+        post_enrollments.delete().where(
+            post_enrollments.c.post_id == post_id,
+            post_enrollments.c.user_id == current_user.id,
+        )
+    )
+    db.commit()
+    return {"ok": True}
 
 @router.put("/{post_id}", response_model=schemas.PostResponse)
 def update_post(

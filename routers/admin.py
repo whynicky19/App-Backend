@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from models import User, AiUsageLog
+import json
+from models import User, AiUsageLog, Posts, post_enrollments
 from schemas import UserCreate, UserResponse
 from deps import get_current_admin
 from db import get_db
@@ -102,6 +103,15 @@ def delete_user(
     db.commit()
 
     return {"message": "User deleted"}
+
+@router.get("/classes/{post_id}/members", response_model=list[UserResponse])
+def get_class_members(post_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(User)
+        .join(post_enrollments, User.id == post_enrollments.c.user_id)
+        .filter(post_enrollments.c.post_id == post_id)
+        .all()
+    )
 
 @router.get("/ai-usage")
 def get_ai_usage(
