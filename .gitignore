@@ -44,4 +44,5 @@ Thumbs.db
 *.sqlite
 *.db
 
-uploads/
+uploads/*
+!uploads/.gitkeep
