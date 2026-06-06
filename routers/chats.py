@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from db import get_db
 from deps import get_current_user
-from models import Chat, chat_members
+from models import Chat, chat_members, Message
 from schemas import ChatCreate, ChatResponse
 from models import User
 
@@ -57,6 +57,27 @@ def add_user_to_chat(chat_id: int, user_id: int, db: Session = Depends(get_db), 
     db.execute(chat_members.insert().values(chat_id=chat_id, user_id=user_id))
     db.commit()
     return {"message": "User added"}
+
+@router.delete("/{chat_id}")
+def delete_chat(chat_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    chat = db.query(Chat).filter(Chat.id == chat_id).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    # Check the user is a member of this chat
+    member = db.execute(
+        chat_members.select().where(
+            chat_members.c.chat_id == chat_id,
+            chat_members.c.user_id == current_user.id
+        )
+    ).fetchone()
+    if not member:
+        raise HTTPException(status_code=403, detail="Not a member of this chat")
+    # Delete messages, members, then the chat
+    db.query(Message).filter(Message.chat_id == chat_id).delete()
+    db.execute(chat_members.delete().where(chat_members.c.chat_id == chat_id))
+    db.delete(chat)
+    db.commit()
+    return {"message": "Chat deleted"}
 
 @router.delete("/{chat_id}/users/{user_id}")
 def remove_user_from_chat(chat_id: int, user_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):

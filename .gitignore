@@ -43,3 +43,5 @@ Thumbs.db
 *.tmp
 *.sqlite
 *.db
+
+uploads/
