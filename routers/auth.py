@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from db import get_db
 import schemas
 from crud import users as crud_users
-from security import hash_password, verify_password, create_access_token
+from security import hash_password, verify_password, create_access_token, create_refresh_token, decode_refresh_token
+from jose import JWTError
 from deps import get_current_user
 from utils.groups import search_groups
 
@@ -49,8 +50,30 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    token = create_access_token(subject=str(user.id))
-    return {"access_token": token, "token_type": "bearer"}
+    access_token = create_access_token(subject=str(user.id))
+    refresh_token = create_refresh_token(subject=str(user.id))
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+
+@router.post("/refresh", response_model=schemas.Token)
+def refresh_token(body: schemas.RefreshRequest, db: Session = Depends(get_db)):
+    try:
+        payload = decode_refresh_token(body.refresh_token)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    from crud import users as crud_users
+    user = crud_users.get_user_by_id(db, int(user_id))
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    access_token = create_access_token(subject=str(user.id))
+    new_refresh_token = create_refresh_token(subject=str(user.id))
+    return {"access_token": access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
 
 
 @router.get("/me", response_model=schemas.UserResponse)
