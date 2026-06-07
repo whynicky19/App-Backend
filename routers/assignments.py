@@ -497,31 +497,28 @@ async def ai_grade_submission(
                 reference_urls.append(assignment.reference_solution_url)
 
 
+    # Собираем контекст лекций класса
     lecture_context = ""
     try:
         from models import Posts
-        posts = db.query(Posts).filter(
-            Posts.body.contains('"type": "lecture"') | Posts.body.contains('"type": "material"')
-        ).all()
+        posts = db.query(Posts).filter(Posts.user_id != None).all()
         parts = []
-        for p in posts[:6]:
+        for p in posts:
             try:
                 b = _json.loads(p.body)
+                ptype = b.get("type", "")
+                if ptype not in ("lecture", "material"):
+                    continue
+                # Проверяем что пост относится к нужному классу
+                class_id_in_body = b.get("class_id")
+                if class_id_in_body and int(class_id_in_body) != assignment.class_id:
+                    continue
+                content = (b.get("content") or b.get("description") or "")[:2000]
+                block = f"### {p.title}\n{content}"
+                parts.append(block)
             except Exception:
                 continue
-            if b.get("type") not in ("lecture", "material"):
-                continue
-            content = (b.get("content") or b.get("description") or "")[:2000]
-            file_texts = []
-            for furl in b.get("files", [])[:3]:
-                ft = await _fetch_file_text(furl)
-                if ft.strip():
-                    file_texts.append(ft[:3000])
-            block = f"### {p.title}\n{content}"
-            if file_texts:
-                block += "\n" + "\n".join(file_texts)
-            parts.append(block)
-        lecture_context = "\n\n".join(parts)
+        lecture_context = "\n\n".join(parts[:5])
     except Exception:
         pass
 
