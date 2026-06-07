@@ -23,42 +23,15 @@ logging.basicConfig(level=logging.INFO)
 
 Base.metadata.create_all(bind=engine)
 
-def _migrate():
-    with engine.connect() as conn:
-        migrations = [
-            "ALTER TABLE assignments ADD COLUMN IF NOT EXISTS class_id INTEGER NOT NULL DEFAULT 0",
-            "CREATE INDEX IF NOT EXISTS ix_assignments_class_id ON assignments(class_id)",
-            "ALTER TABLE assignments ADD COLUMN IF NOT EXISTS reference_solution_url TEXT",
-            "ALTER TABLE submissions ADD COLUMN IF NOT EXISTS file_urls TEXT",
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_url TEXT",
-            "ALTER TABLE posts ADD COLUMN IF NOT EXISTS created_at DATETIME",
-            "ALTER TABLE submissions ADD COLUMN IF NOT EXISTS variant_number INTEGER",
-            """CREATE TABLE IF NOT EXISTS ai_usage_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                class_id INTEGER,
-                endpoint VARCHAR(64) NOT NULL DEFAULT 'chat',
-                prompt_tokens INTEGER DEFAULT 0,
-                completion_tokens INTEGER DEFAULT 0,
-                total_tokens INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )""",
-            "CREATE INDEX IF NOT EXISTS ix_ai_usage_logs_class_id ON ai_usage_logs(class_id)",
-            "CREATE INDEX IF NOT EXISTS ix_ai_usage_logs_created_at ON ai_usage_logs(created_at)",
-        ]
-        for stmt in migrations:
-            try:
-                conn.execute(text(stmt))
-                conn.commit()
-            except Exception:
-                try:
-                    plain = stmt.replace(" IF NOT EXISTS", "")
-                    conn.execute(text(plain))
-                    conn.commit()
-                except Exception:
-                    pass
+def _check_db():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logging.info("Database connection OK")
+    except Exception as e:
+        logging.error(f"Database connection failed: {e}")
 
-_migrate()
+_check_db()
 
 _cors_raw = os.getenv("CORS_ORIGINS", "*")
 _cors_origins = [o.strip() for o in _cors_raw.split(",")] if _cors_raw != "*" else ["*"]
@@ -103,3 +76,8 @@ app.include_router(rag_router)
 _upload_dir = os.getenv("UPLOAD_DIR", "uploads")
 os.makedirs(_upload_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_upload_dir), name="uploads")
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

@@ -1,3 +1,5 @@
+import time
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -11,6 +13,22 @@ from deps import get_current_user
 from utils.groups import search_groups
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_login_attempts: dict = defaultdict(list)
+_LOGIN_MAX = 5
+_LOGIN_WINDOW = 60  # seconds
+
+
+def _check_login_rate(key: str):
+    now = time.time()
+    _login_attempts[key] = [t for t in _login_attempts[key] if now - t < _LOGIN_WINDOW]
+    if len(_login_attempts[key]) >= _LOGIN_MAX:
+        raise HTTPException(status_code=429, detail="Слишком много попыток входа. Подождите минуту.")
+    _login_attempts[key].append(now)
+
+
+def _clear_login_rate(key: str):
+    _login_attempts.pop(key, None)
 
 
 @router.get("/groups/search")
@@ -43,13 +61,11 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    _check_login_rate(form_data.username)
     user = crud_users.get_user_by_email(db, form_data.username)
-    if not user:
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
-
-    if not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
-
+    _clear_login_rate(form_data.username)
     access_token = create_access_token(subject=str(user.id))
     refresh_token = create_refresh_token(subject=str(user.id))
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
