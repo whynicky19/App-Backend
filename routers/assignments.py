@@ -497,6 +497,34 @@ async def ai_grade_submission(
                 reference_urls.append(assignment.reference_solution_url)
 
 
+    lecture_context = ""
+    try:
+        from models import Posts
+        posts = db.query(Posts).filter(
+            Posts.body.contains('"type": "lecture"') | Posts.body.contains('"type": "material"')
+        ).all()
+        parts = []
+        for p in posts[:6]:
+            try:
+                b = _json.loads(p.body)
+            except Exception:
+                continue
+            if b.get("type") not in ("lecture", "material"):
+                continue
+            content = (b.get("content") or b.get("description") or "")[:2000]
+            file_texts = []
+            for furl in b.get("files", [])[:3]:
+                ft = await _fetch_file_text(furl)
+                if ft.strip():
+                    file_texts.append(ft[:3000])
+            block = f"### {p.title}\n{content}"
+            if file_texts:
+                block += "\n" + "\n".join(file_texts)
+            parts.append(block)
+        lecture_context = "\n\n".join(parts)
+    except Exception:
+        pass
+
     try:
         result = await _ai_grade(
             text=full_text,
@@ -505,6 +533,7 @@ async def ai_grade_submission(
             max_score=assignment.max_score,
             reference_solution_url=None,
             reference_solution_urls=reference_urls if reference_urls else None,
+            lecture_context=lecture_context if lecture_context else None,
         )
     except RuntimeError as e:
         crud.set_submission_status(db, submission_id, "submitted")

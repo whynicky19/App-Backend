@@ -75,6 +75,16 @@ def _validate_file_content(content: bytes, ext: str) -> bool:
     return True
 
 
+@router.get("/utils/file-text")
+async def get_file_text(
+    url: str,
+    current_user=Depends(get_current_user),
+):
+    from services.ai_grader import _fetch_file_text
+    text = await _fetch_file_text(url)
+    return {"text": text}
+
+
 @router.post("/")
 async def upload_file(
     file: UploadFile = File(...),

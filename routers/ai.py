@@ -42,6 +42,7 @@ class ChatRequest(BaseModel):
     max_tokens: int = 2000
     temperature: float = 0.7
     class_id: Optional[int] = None
+    lecture_context: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -88,6 +89,12 @@ async def ai_chat(
         "max_tokens": max_tokens,
         "temperature": body.temperature,
     }
+
+    if body.lecture_context:
+        payload["messages"].insert(0, {
+            "role": "system",
+            "content": f"Материалы класса (отвечай опираясь на них):\n{body.lecture_context[:8000]}",
+        })
 
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:

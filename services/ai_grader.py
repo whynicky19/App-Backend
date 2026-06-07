@@ -7,7 +7,7 @@ import httpx
 from typing import Optional
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-OPENAI_MODEL = "gpt-4o-mini"  
+OPENAI_MODEL = "gpt-4o"
 
 def _build_system_prompt(has_reference: bool) -> str:
     ref_block = ""
@@ -15,23 +15,17 @@ def _build_system_prompt(has_reference: bool) -> str:
         ref_block = """
 ЭТАЛОННОЕ РЕШЕНИЕ:
 - Учитель предоставил эталонное решение — сравни работу студента с ним по смыслу и полноте.
-- Не требуй дословного совпадения — важно смысловое соответствие и понимание темы.
 - Укажи конкретно: что совпадает с эталоном, что упущено или раскрыто недостаточно.
 """
-    return f"""Ты — объективный и справедливый преподаватель. Твоя задача — оценить работу студента строго по заданным критериям, без предвзятости в любую сторону.
+    return f"""Ты точный экзаменатор. Оценивай строго по содержанию — без домыслов и завышения.
 {ref_block}
-Правила оценивания
-Оценивай всё, что написано в работе, включая логические выводы и контекст — трактуй сомнения в пользу студента.
-Каждый критерий оценивай щедро:
-полностью раскрыт → полный балл,
-хорошо раскрыт → около 90–95% балла,
-частично раскрыт → около 80–85% балла,
-слабо раскрыт → около 60–70% балла,
-совсем не раскрыт → 0.
-Если студент прикрепил файл — его содержимое учитывается наравне с текстом и может повышать оценку.
-Если работа содержит хотя бы минимальные усилия → минимальный балл около 60–70%.
-Если файл не удалось прочитать — выставляй 70–75% от возможного балла (студент старался, просто технические проблемы) и указывай причину в комментарии.
-Пиши комментарии на русском: отмечай прежде всего что сделано хорошо, потом мягко указывай на небольшие недочёты — тон поддерживающий и мотивирующий.
+Правила оценивания:
+Полностью раскрыт → полный балл.
+Хорошо раскрыт → 80–90%.
+Частично → 40–60%.
+Слабо → 10–30%.
+Отсутствует или файл не читается → 0.
+Не добавляй баллы "за старание". Комментарий: что верно, что неверно, чего не хватает. Тон нейтральный.
 
 ВАЖНО: отвечай ТОЛЬКО валидным JSON без каких-либо пояснений вне JSON.
 
@@ -55,6 +49,7 @@ def _build_user_prompt(
     max_score: int,
     has_file: bool,
     reference_text: Optional[str] = None,
+    lecture_context: Optional[str] = None,
 ) -> str:
     criteria_text = "\n".join(
         f"- {c['name']} (вес: {c['weight']} баллов)"
@@ -76,11 +71,21 @@ def _build_user_prompt(
 
 """
 
-    return f"""Оцени работу студента по критериям ниже. Оценивай объективно — ровно настолько, насколько критерий реально раскрыт.
+    lecture_block = ""
+    if lecture_context and lecture_context.strip():
+        lecture_block = f"""
+МАТЕРИАЛЫ КУРСА:
+\"\"\"
+{lecture_context[:6000]}
+\"\"\"
+
+"""
+
+    return f"""Оцени работу студента по критериям ниже. Оценивай строго по содержанию.
 
 КРИТЕРИИ ОЦЕНКИ (максимальный балл = {max_score}):
 {criteria_text}
-{ref_block}
+{ref_block}{lecture_block}
 РАБОТА СТУДЕНТА:
 \"\"\"\n{text}
 \"\"\"{file_note}
@@ -109,15 +114,11 @@ async def _fetch_file_text(url: str) -> str:
 
             if ext == "pdf" or "pdf" in content_type:
                 try:
-                    from pypdf import PdfReader
-                    reader = PdfReader(io.BytesIO(resp.content))
-                    pages = []
-                    for page in reader.pages[:40]:
-                        txt = page.extract_text() or ""
-                        if txt.strip():
-                            pages.append(txt)
-                    text = "\n\n".join(pages)
-                    return text[:20000] if text.strip() else ""
+                    import pdfplumber
+                    with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
+                        pages = [p.extract_text(layout=True) or "" for p in pdf.pages[:40]]
+                    text = "\n\n".join(p for p in pages if p.strip())
+                    return text[:25000] if text.strip() else ""
                 except Exception as e:
                     return f"[PDF — не удалось извлечь текст: {e}]"
 
@@ -169,6 +170,7 @@ async def grade_submission(
     file_url: Optional[str] = None,
     reference_solution_url: Optional[str] = None,
     reference_solution_urls: Optional[list] = None,
+    lecture_context: Optional[str] = None,
 ) -> dict:
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
@@ -220,7 +222,7 @@ async def grade_submission(
         "messages": [
             {"role": "system", "content": _build_system_prompt(has_reference)},
             {"role": "user", "content": _build_user_prompt(
-                full_text, criteria, max_score, has_file, reference_text
+                full_text, criteria, max_score, has_file, reference_text, lecture_context
             )},
         ],
         "max_tokens": 1800,
