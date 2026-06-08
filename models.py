@@ -54,6 +54,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     full_name: Mapped[str] = mapped_column(String(200), nullable=True)
     group: Mapped[str] = mapped_column(String(100), nullable=True)
+    org_type: Mapped[str] = mapped_column(String, nullable=False, default="university")
 
     posts: Mapped[list["Posts"]] = relationship(
         back_populates="user",

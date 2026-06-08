@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from starlette.staticfiles import StaticFiles
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from db import Base, engine
+from db import Base, engine, get_engine
 from models import Base
 from routers import auth, admin, users, posts, chats, messages, reactions, uploads, ai
 from routers.assignments import router as assignments_router
@@ -32,6 +32,22 @@ def _check_db():
         logging.error(f"Database connection failed: {e}")
 
 _check_db()
+
+def _ensure_schemas():
+    if not str(engine.url).startswith("postgresql"):
+        return
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS university"))
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS school"))
+            conn.commit()
+        for org in ["university", "school"]:
+            Base.metadata.create_all(bind=get_engine(org))
+        logging.info("Schemas ready: university, school")
+    except Exception as e:
+        logging.warning(f"Schema init skipped: {e}")
+
+_ensure_schemas()
 
 _cors_raw = os.getenv("CORS_ORIGINS", "*")
 _cors_origins = [o.strip() for o in _cors_raw.split(",")] if _cors_raw != "*" else ["*"]

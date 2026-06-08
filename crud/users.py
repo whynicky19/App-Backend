@@ -3,8 +3,11 @@ from sqlalchemy import select
 import models
 
 
-def get_user_by_email(db: Session, email: str):
-    smth = select(models.User).where(models.User.email == email)
+def get_user_by_email(db: Session, email: str, org_type: str = "university"):
+    smth = select(models.User).where(
+        models.User.email == email,
+        models.User.org_type == org_type,
+    )
     result = db.execute(smth)
     return result.scalar_one_or_none()
 
@@ -15,13 +18,15 @@ def get_user_by_id(db: Session, user_id: int):
     return result.scalar_one_or_none()
 
 
-def create_user(db: Session, email: str, hashed_password: str, role: str = "employee", full_name: str = None, group: str = None):
+def create_user(db: Session, email: str, hashed_password: str, role: str = "employee",
+                full_name: str = None, group: str = None, org_type: str = "university"):
     user = models.User(
         email=email,
         hashed_password=hashed_password,
         role=role,
         full_name=full_name,
-        group=group  # ← добавили
+        group=group,
+        org_type=org_type,
     )
     db.add(user)
     db.commit()

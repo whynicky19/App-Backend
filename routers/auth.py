@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -39,10 +39,10 @@ def get_groups(q: str = ""):
 
 @router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing = crud_users.get_user_by_email(db, user.email)
+    org_type = user.org_type if user.org_type in ("university", "school") else "university"
+    existing = crud_users.get_user_by_email(db, user.email, org_type)
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
-
 
     if user.group and user.group not in search_groups(""):
         raise HTTPException(status_code=400, detail="Такой группы не существует")
@@ -54,15 +54,20 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
         hashed,
         user.role,
         full_name=user.full_name,
-        group=user.group
+        group=user.group,
+        org_type=org_type,
     )
     return created
 
 
 @router.post("/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+    org_type: str = Query("university"),
+):
     _check_login_rate(form_data.username)
-    user = crud_users.get_user_by_email(db, form_data.username)
+    user = crud_users.get_user_by_email(db, form_data.username, org_type)
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     _clear_login_rate(form_data.username)

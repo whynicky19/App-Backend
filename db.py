@@ -23,3 +23,17 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_engine(org_type: str = "university"):
+    if DATABASE_URL.startswith("sqlite"):
+        return engine
+    schema = "school" if org_type == "school" else "university"
+    return create_engine(
+        DATABASE_URL,
+        connect_args={"options": f"-csearch_path={schema},public"},
+    )
+
+def get_session_for_org(org_type: str):
+    eng = get_engine(org_type)
+    OrgSession = sessionmaker(bind=eng)
+    return OrgSession()

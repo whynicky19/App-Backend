@@ -8,6 +8,7 @@ class UserCreate(BaseModel):
     role: str
     full_name: Optional[str] = None
     group: str | None = None
+    org_type: str = "university"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -18,6 +19,7 @@ class UserResponse(BaseModel):
     role: str
     group: str | None = None
     full_name: Optional[str] = None
+    org_type: str = "university"
 
     model_config = ConfigDict(from_attributes=True)
 
