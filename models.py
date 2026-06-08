@@ -217,6 +217,7 @@ class RagDocument(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    org_type: Mapped[str] = mapped_column(String, nullable=False, default="university")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     chunks: Mapped[list["RagChunk"]] = relationship(

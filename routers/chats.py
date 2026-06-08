@@ -29,7 +29,7 @@ def get_chats(db: Session = Depends(get_db), current_user=Depends(get_current_us
     return chats
 
 @router.get("/{chat_id}/users")
-def get_chat_users(chat_id: int, db: Session = Depends(get_db)):
+def get_chat_users(chat_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     users = (
         db.query(User)
         .join(chat_members)
@@ -46,6 +46,8 @@ def add_user_to_chat(chat_id: int, user_id: int, db: Session = Depends(get_db), 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.org_type != current_user.org_type:
+        raise HTTPException(status_code=403, detail="Нельзя добавить пользователя из другой организации")
     existing = db.execute(
         chat_members.select().where(
             chat_members.c.chat_id == chat_id,

@@ -122,11 +122,24 @@ def delete_user(
     return {"message": "User deleted"}
 
 @router.get("/classes/{post_id}/members", response_model=list[UserResponse])
-def get_class_members(post_id: int, db: Session = Depends(get_db)):
+def get_class_members(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
+):
+    post = db.query(Posts).filter(Posts.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Not found")
+    creator = db.query(User).filter(User.id == post.user_id).first()
+    if not creator or creator.org_type != current_user.org_type:
+        raise HTTPException(status_code=404, detail="Not found")
     return (
         db.query(User)
         .join(post_enrollments, User.id == post_enrollments.c.user_id)
-        .filter(post_enrollments.c.post_id == post_id)
+        .filter(
+            post_enrollments.c.post_id == post_id,
+            User.org_type == current_user.org_type,
+        )
         .all()
     )
 

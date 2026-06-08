@@ -88,7 +88,7 @@ def ingest_file(
     token_count = count_tokens(full_text)
     logger.info("'%s': распарсен, %d токенов", fname, token_count)
 
-    rag_doc = RagDocument(filename=fname, mime_type=mime)
+    rag_doc = RagDocument(filename=fname, mime_type=mime, org_type=current_user.org_type)
     db.add(rag_doc)
     db.flush()
 
@@ -153,7 +153,7 @@ def list_documents(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    docs = db.query(RagDocument).order_by(RagDocument.created_at.desc()).all()
+    docs = db.query(RagDocument).filter(RagDocument.org_type == current_user.org_type).order_by(RagDocument.created_at.desc()).all()
     return [
         schemas.RagIngestResponse(
             document_id=d.id,
@@ -169,6 +169,9 @@ def get_document_json(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
+    doc = db.query(RagDocument).filter(RagDocument.id == doc_id).first()
+    if not doc or doc.org_type != current_user.org_type:
+        raise HTTPException(status_code=404, detail="Документ не найден")
     proc = db.query(ProcessedDocument).filter(
         ProcessedDocument.rag_document_id == doc_id
     ).first()
@@ -183,7 +186,7 @@ def delete_document(
     current_user=Depends(get_current_teacher),
 ):
     doc = db.query(RagDocument).filter(RagDocument.id == doc_id).first()
-    if not doc:
+    if not doc or doc.org_type != current_user.org_type:
         raise HTTPException(status_code=404, detail="Документ не найден")
     db.delete(doc)
     db.commit()

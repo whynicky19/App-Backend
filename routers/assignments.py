@@ -24,6 +24,16 @@ def _check_assignment_org(db: Session, assignment, current_user):
         raise HTTPException(status_code=404, detail="Assignment not found")
 
 
+def _check_submission_org(db: Session, submission, current_user):
+    """404 если submission принадлежит классу другой организации."""
+    from models import Assignment
+    assignment = db.query(Assignment).filter(Assignment.id == submission.assignment_id).first()
+    if assignment:
+        cls = db.query(ClassModel).filter(ClassModel.id == assignment.class_id).first()
+        if cls and cls.org_type != current_user.org_type:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+
 # ════════════════════════════════════════════════════════
 #  ЗАДАНИЯ
 # ════════════════════════════════════════════════════════
@@ -324,6 +334,7 @@ def get_submission(
     obj = crud.get_submission(db, submission_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Submission not found")
+    _check_submission_org(db, obj, current_user)
     if current_user.role == "student" and obj.student_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -349,6 +360,7 @@ def delete_submission(
     obj = crud.get_submission(db, submission_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Submission not found")
+    _check_submission_org(db, obj, current_user)
 
     if current_user.role == "student":
         if obj.student_id != current_user.id:
@@ -378,6 +390,7 @@ def save_grade(
     sub = crud.get_submission(db, submission_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    _check_submission_org(db, sub, current_user)
 
     crud.set_submission_status(db, submission_id, "graded")
     return crud.create_or_update_grade(
@@ -401,6 +414,8 @@ def get_grade(
         raise HTTPException(status_code=404, detail="Grade not found yet")
 
     sub = crud.get_submission(db, submission_id)
+    if sub:
+        _check_submission_org(db, sub, current_user)
     if current_user.role == "student" and sub.student_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     return grade
@@ -416,9 +431,11 @@ def update_status(
     allowed = {"submitted", "grading", "graded", "late"}
     if new_status not in allowed:
         raise HTTPException(status_code=422, detail=f"Status must be one of {allowed}")
-    obj = crud.set_submission_status(db, submission_id, new_status)
-    if not obj:
+    sub = crud.get_submission(db, submission_id)
+    if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    _check_submission_org(db, sub, current_user)
+    obj = crud.set_submission_status(db, submission_id, new_status)
     return {"id": obj.id, "status": obj.status}
 
 
@@ -438,6 +455,7 @@ async def ai_grade_submission(
     sub = crud.get_submission(db, submission_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    _check_submission_org(db, sub, current_user)
 
     _check_rate_limit(current_user.id)
 

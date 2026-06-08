@@ -12,4 +12,4 @@ def get_all_users(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    return db.query(User).filter(User.is_active == True).all()
+    return db.query(User).filter(User.is_active == True, User.org_type == current_user.org_type).all()
