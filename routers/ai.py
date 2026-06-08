@@ -130,6 +130,7 @@ async def ai_chat(
             user_id=current_user.id,
             class_id=body.class_id,
             endpoint="chat_vision" if has_vision else "chat",
+            org_type=current_user.org_type,
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),

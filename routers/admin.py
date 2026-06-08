@@ -149,9 +149,10 @@ def get_ai_usage(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
     from sqlalchemy import desc, func
-    q = db.query(AiUsageLog)
+    q = db.query(AiUsageLog).filter(AiUsageLog.org_type == current_user.org_type)
     if class_id is not None:
         q = q.filter(AiUsageLog.class_id == class_id)
     total = q.count()
@@ -183,6 +184,7 @@ def get_ai_usage(
 @router.get("/ai-usage/summary")
 def get_ai_usage_summary(
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
     from sqlalchemy import func
     rows = (
@@ -193,6 +195,7 @@ def get_ai_usage_summary(
             func.sum(AiUsageLog.completion_tokens).label("completion_tokens"),
             func.count(AiUsageLog.id).label("request_count"),
         )
+        .filter(AiUsageLog.org_type == current_user.org_type)
         .group_by(AiUsageLog.class_id)
         .all()
     )

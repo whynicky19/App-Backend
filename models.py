@@ -245,6 +245,7 @@ class AiUsageLog(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     class_id: Mapped[int] = mapped_column(Integer, nullable=True, index=True)
     endpoint: Mapped[str] = mapped_column(String(64), nullable=False)
+    org_type: Mapped[str] = mapped_column(String, nullable=False, default="university")
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
