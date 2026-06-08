@@ -18,8 +18,7 @@ def list_all_classes(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-
-    classes = crud.get_all_classes(db)
+    classes = crud.get_all_classes(db, org_type=current_user.org_type)
     result = []
     for c in classes:
         resp = schemas.ClassResponse.model_validate(c)
@@ -34,15 +33,14 @@ def list_classes(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-
     if current_user.role == "student":
-        # Student sees only classes they are members of
         classes = db.query(crud.Class).filter(
-            crud.Class.members.any(id=current_user.id)
+            crud.Class.members.any(id=current_user.id),
+            crud.Class.org_type == current_user.org_type,
         ).order_by(crud.Class.created_at.desc()).all()
     else:
         teacher_id = current_user.id if my_only else None
-        classes = crud.get_all_classes(db, teacher_id=teacher_id)
+        classes = crud.get_all_classes(db, teacher_id=teacher_id, org_type=current_user.org_type)
     result = []
     for c in classes:
         resp = schemas.ClassResponse.model_validate(c)
@@ -57,7 +55,9 @@ def create_class(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
-    obj = crud.create_class(db, name=body.name, description=body.description, created_by=current_user.id, group=body.group)
+    obj = crud.create_class(db, name=body.name, description=body.description,
+                            created_by=current_user.id, group=body.group,
+                            org_type=current_user.org_type)
     resp = schemas.ClassResponse.model_validate(obj)
     resp.member_count = 0
     return resp
@@ -70,7 +70,7 @@ def get_class(
     current_user=Depends(get_current_user),
 ):
     obj = crud.get_class(db, class_id)
-    if not obj:
+    if not obj or obj.org_type != current_user.org_type:
         raise HTTPException(status_code=404, detail="Класс не найден")
     resp = schemas.ClassResponse.model_validate(obj)
     resp.member_count = len(obj.members)
@@ -84,9 +84,10 @@ def update_class(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
-    obj = crud.update_class(db, class_id, body.model_dump(exclude_none=True))
-    if not obj:
+    obj = crud.get_class(db, class_id)
+    if not obj or obj.org_type != current_user.org_type:
         raise HTTPException(status_code=404, detail="Класс не найден")
+    obj = crud.update_class(db, class_id, body.model_dump(exclude_none=True))
     resp = schemas.ClassResponse.model_validate(obj)
     resp.member_count = len(obj.members)
     return resp
@@ -98,8 +99,10 @@ def delete_class(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
-    if not crud.delete_class(db, class_id):
+    obj = crud.get_class(db, class_id)
+    if not obj or obj.org_type != current_user.org_type:
         raise HTTPException(status_code=404, detail="Класс не найден")
+    crud.delete_class(db, class_id)
 
 
 
@@ -111,7 +114,7 @@ def get_members(
     current_user=Depends(get_current_user),
 ):
     obj = crud.get_class(db, class_id)
-    if not obj:
+    if not obj or obj.org_type != current_user.org_type:
         raise HTTPException(status_code=404, detail="Класс не найден")
     return crud.get_members(db, class_id)
 
@@ -123,9 +126,12 @@ def add_member(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
+    obj = crud.get_class(db, class_id)
+    if not obj or obj.org_type != current_user.org_type:
+        raise HTTPException(status_code=404, detail="Класс не найден")
     ok = crud.add_member(db, class_id, body.user_id)
     if not ok:
-        raise HTTPException(status_code=404, detail="Класс или пользователь не найден")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     return {"message": "Участник добавлен"}
 
 
@@ -139,7 +145,9 @@ def join_class(
     if not obj:
         raise HTTPException(status_code=404, detail="Класс не найден")
 
-    # Проверка группы
+    if obj.org_type != current_user.org_type:
+        raise HTTPException(status_code=403, detail="Нельзя вступить в класс другой организации")
+
     if obj.group and current_user.group != obj.group:
         raise HTTPException(status_code=403, detail="Этот класс только для группы " + obj.group)
 
@@ -155,7 +163,9 @@ def leave_class(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-
+    obj = crud.get_class(db, class_id)
+    if not obj or obj.org_type != current_user.org_type:
+        raise HTTPException(status_code=404, detail="Класс не найден")
     crud.remove_member(db, class_id, current_user.id)
     return {"message": "Вы покинули класс"}
 
@@ -167,6 +177,9 @@ def remove_member(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
+    obj = crud.get_class(db, class_id)
+    if not obj or obj.org_type != current_user.org_type:
+        raise HTTPException(status_code=404, detail="Класс не найден")
     crud.remove_member(db, class_id, user_id)
 
 
@@ -182,7 +195,7 @@ def class_rating(
     obj = crud.get_class(db, class_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Класс не найден")
-    rows = crud.get_student_rating(db, class_id=class_id)
+    rows = crud.get_student_rating(db, class_id=class_id, org_type=current_user.org_type)
     return schemas.StudentRatingResponse(
         class_id=class_id,
         ratings=[schemas.StudentRatingEntry(**r) for r in rows],
@@ -198,8 +211,7 @@ def global_rating(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-
-    rows = crud.get_student_rating(db, class_id=None)
+    rows = crud.get_student_rating(db, class_id=None, org_type=current_user.org_type)
     return schemas.StudentRatingResponse(
         class_id=None,
         ratings=[schemas.StudentRatingEntry(**r) for r in rows],

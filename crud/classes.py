@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from models import Class, User, AssignmentVariant, Assignment, Submission, Grade, class_members
 from sqlalchemy import func
 
-def create_class(db: Session, name: str, description: Optional[str], created_by: int) -> Class:
-    obj = Class(name=name, description=description, created_by=created_by)
+def create_class(db: Session, name: str, description: Optional[str], created_by: int,
+                 group: Optional[str] = None, org_type: str = "university") -> Class:
+    obj = Class(name=name, description=description, created_by=created_by, group=group, org_type=org_type)
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -13,8 +14,11 @@ def create_class(db: Session, name: str, description: Optional[str], created_by:
 def get_class(db: Session, class_id: int) -> Optional[Class]:
     return db.query(Class).filter(Class.id == class_id).first()
 
-def get_all_classes(db: Session, teacher_id: Optional[int] = None) -> List[Class]:
+def get_all_classes(db: Session, teacher_id: Optional[int] = None,
+                    org_type: Optional[str] = None) -> List[Class]:
     q = db.query(Class)
+    if org_type is not None:
+        q = q.filter(Class.org_type == org_type)
     if teacher_id is not None:
         q = q.filter(Class.created_by == teacher_id)
     return q.order_by(Class.created_at.desc()).all()
@@ -114,7 +118,8 @@ def get_variant_by_number(db: Session, assignment_id: int, variant_number: int) 
         AssignmentVariant.variant_number == variant_number,
     ).first()
 
-def get_student_rating(db: Session, class_id: Optional[int] = None) -> list:
+def get_student_rating(db: Session, class_id: Optional[int] = None,
+                       org_type: Optional[str] = None) -> list:
     q = (
         db.query(
             User.id.label("student_id"),
@@ -127,6 +132,9 @@ def get_student_rating(db: Session, class_id: Optional[int] = None) -> list:
         .join(Grade, Grade.submission_id == Submission.id)
         .filter(User.role == "student")
     )
+
+    if org_type is not None:
+        q = q.filter(User.org_type == org_type)
 
     if class_id is not None:
         q = q.filter(

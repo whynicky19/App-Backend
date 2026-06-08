@@ -37,6 +37,8 @@ class Class(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     group: Mapped[str] = mapped_column(String(100), nullable=True)
 
+    org_type: Mapped[str] = mapped_column(String, nullable=False, default="university")
+
     creator: Mapped["User"] = relationship(back_populates="classes_created", foreign_keys=[created_by])
     members: Mapped[list["User"]] = relationship(
         "User",

@@ -10,10 +10,18 @@ from crud import assignments as crud
 from crud import classes as crud_classes
 from db import get_db
 from deps import get_current_user, get_current_teacher
+from models import Class as ClassModel
 from services.ai_grader import grade_submission as _ai_grade
 from routers.ai import _check_rate_limit
 
 router = APIRouter(tags=["Assignments"])
+
+
+def _check_assignment_org(db: Session, assignment, current_user):
+    """404 если задание принадлежит классу другой организации."""
+    cls = db.query(ClassModel).filter(ClassModel.id == assignment.class_id).first()
+    if cls and cls.org_type != current_user.org_type:
+        raise HTTPException(status_code=404, detail="Assignment not found")
 
 
 # ════════════════════════════════════════════════════════
@@ -52,6 +60,10 @@ def list_assignments(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    if class_id is not None:
+        cls = db.query(ClassModel).filter(ClassModel.id == class_id).first()
+        if cls and cls.org_type != current_user.org_type:
+            raise HTTPException(status_code=404, detail="Assignment not found")
     return crud.get_all_assignments(db, class_id=class_id, active_only=active_only)
 
 
@@ -118,6 +130,7 @@ def get_assignment(
     obj = crud.get_assignment(db, assignment_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    _check_assignment_org(db, obj, current_user)
     return obj
 
 
@@ -128,10 +141,12 @@ def update_assignment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
-    data = body.model_dump(exclude_none=True)
-    obj = crud.update_assignment(db, assignment_id, data)
+    obj = crud.get_assignment(db, assignment_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    _check_assignment_org(db, obj, current_user)
+    data = body.model_dump(exclude_none=True)
+    obj = crud.update_assignment(db, assignment_id, data)
     return obj
 
 
@@ -141,9 +156,11 @@ def delete_assignment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
-    """Удалить задание (вместе со всеми сдачами и оценками)."""
-    if not crud.delete_assignment(db, assignment_id):
+    obj = crud.get_assignment(db, assignment_id)
+    if not obj:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    _check_assignment_org(db, obj, current_user)
+    crud.delete_assignment(db, assignment_id)
 
 
 # ════════════════════════════════════════════════════════
@@ -163,6 +180,7 @@ def list_variants(
     obj = crud.get_assignment(db, assignment_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    _check_assignment_org(db, obj, current_user)
     return crud_classes.get_variants(db, assignment_id)
 
 
@@ -177,10 +195,10 @@ def add_variant(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
 ):
-
     obj = crud.get_assignment(db, assignment_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    _check_assignment_org(db, obj, current_user)
     return crud_classes.add_variant(
         db=db,
         assignment_id=assignment_id,
@@ -221,6 +239,7 @@ def submit_assignment(
     assignment = crud.get_assignment(db, assignment_id)
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    _check_assignment_org(db, assignment, current_user)
     if not assignment.is_active:
         raise HTTPException(status_code=400, detail="Assignment is closed")
 
@@ -282,6 +301,7 @@ def get_submissions(
     assignment = crud.get_assignment(db, assignment_id)
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    _check_assignment_org(db, assignment, current_user)
     subs = crud.get_submissions_for_assignment(db, assignment_id)
 
     # Enrich with student ФИО

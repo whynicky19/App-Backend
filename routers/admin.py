@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import json
 from models import User, AiUsageLog, Posts, post_enrollments
 from schemas import UserCreate, UserResponse
-from deps import get_current_admin
+from deps import get_current_admin, get_current_user
 from db import get_db
 from crud import users as crud_users
 from security import hash_password
@@ -20,8 +20,9 @@ router = APIRouter(
 def create_user(
     user: UserCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
-    existing = crud_users.get_user_by_email(db, user.email)
+    existing = crud_users.get_user_by_email(db, user.email, current_user.org_type)
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
@@ -30,7 +31,8 @@ def create_user(
     db_user = User(
         email=user.email,
         hashed_password=hashed_password,
-        role=user.role
+        role=user.role,
+        org_type=current_user.org_type,
     )
 
     db.add(db_user)
@@ -40,19 +42,25 @@ def create_user(
     return db_user
 
 @router.get("/users", response_model=list[UserResponse])
-def get_users(db: Session = Depends(get_db)):
-    return db.query(User).all()
+def get_users(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
+):
+    return db.query(User).filter(User.org_type == current_user.org_type).all()
 
 @router.put("/users/{user_id}/role")
 def update_user_role(
     user_id: int,
     new_role: str,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.org_type != current_user.org_type:
+        raise HTTPException(status_code=403, detail="Нет доступа")
 
     user.role = new_role
     db.commit()
@@ -63,11 +71,14 @@ def update_user_role(
 def block_user(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.org_type != current_user.org_type:
+        raise HTTPException(status_code=403, detail="Нет доступа")
 
     user.is_active = False
     db.commit()
@@ -78,11 +89,14 @@ def block_user(
 def unblock_user(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.org_type != current_user.org_type:
+        raise HTTPException(status_code=403, detail="Нет доступа")
 
     user.is_active = True
     db.commit()
@@ -93,11 +107,14 @@ def unblock_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.org_type != current_user.org_type:
+        raise HTTPException(status_code=403, detail="Нет доступа")
 
     db.delete(user)
     db.commit()
