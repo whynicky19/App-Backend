@@ -93,3 +93,7 @@ websocket.py     — WebSocket чат
 migrations/      — Alembic миграции
 uploads/         — загруженные файлы
 ```
+source venv/bin/activate 
+
+
+uvicorn main:app --host 0.0.0.0 --port 8000
