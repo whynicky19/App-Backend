@@ -97,3 +97,10 @@ source venv/bin/activate
 
 
 uvicorn main:app --host 0.0.0.0 --port 8000
+
+
+В отдельном терминале 
+ngrok http 8000
+
+или 
+ngrok http --domain=glacier-radiated-wipe.ngrok-free.dev 8000
